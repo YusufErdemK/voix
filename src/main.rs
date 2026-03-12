@@ -1,5 +1,6 @@
 use gtk::prelude::*;
-use gtk::{Application, ApplicationWindow, Box, Entry, Orientation, ScrolledWindow, TextView};
+use gtk::{Application, ApplicationWindow, Box, Button, Entry, Orientation};
+use webkit2gtk::{WebView, WebViewExt};
 
 fn main() {
     let app = Application::builder()
@@ -10,44 +11,48 @@ fn main() {
         let window = ApplicationWindow::builder()
             .application(app)
             .title("Voix Browser")
-            .default_width(1024)
-            .default_height(768)
+            .default_width(1280)
+            .default_height(800)
             .build();
 
-        let vbox = Box::new(Orientation::Vertical, 4);
+        let vbox = Box::new(Orientation::Vertical, 0);
+        let hbox = Box::new(Orientation::Horizontal, 4);
 
         let url_bar = Entry::new();
-        url_bar.set_placeholder_text(Some("https://example.com"));
+        url_bar.set_placeholder_text(Some("example.com"));
+        url_bar.set_hexpand(true);
 
-        let text_view = TextView::new();
-        text_view.set_editable(false);
-        text_view.set_wrap_mode(gtk::WrapMode::Word);
+        let go_btn = Button::with_label("Git");
 
-        let scrolled = ScrolledWindow::new(None::<&gtk::Adjustment>, None::<&gtk::Adjustment>);
-        scrolled.set_vexpand(true);
-        scrolled.add(&text_view);
+        let webview = WebView::new();
+        webview.set_vexpand(true);
+        webview.load_uri("https://www.google.com");
 
-        let tv_clone = text_view.clone();
+        // Enter
+        let wv1 = webview.clone();
         url_bar.connect_activate(move |entry| {
-            let url = entry.text().to_string();
-            match reqwest::blocking::get(&url).and_then(|r| r.text()) {
-                Ok(html) => {
-                    let document = scraper::Html::parse_document(&html);
-                    let sel = scraper::Selector::parse("p, h1, h2, h3").unwrap();
-                    let content: Vec<String> = document
-                        .select(&sel)
-                        .map(|e| e.text().collect::<String>())
-                        .collect();
-                    tv_clone.buffer().unwrap().set_text(&content.join("\n\n"));
-                }
-                Err(e) => {
-                    tv_clone.buffer().unwrap().set_text(&format!("Hata: {}", e));
-                }
+            let mut url = entry.text().to_string();
+            if !url.starts_with("http://") && !url.starts_with("https://") {
+                url = format!("https://{}", url);
             }
+            wv1.load_uri(&url);
         });
 
-        vbox.pack_start(&url_bar, false, false, 0);
-        vbox.pack_start(&scrolled, true, true, 0);
+        // Buton
+        let wv2 = webview.clone();
+        let ub2 = url_bar.clone();
+        go_btn.connect_clicked(move |_| {
+            let mut url = ub2.text().to_string();
+            if !url.starts_with("http://") && !url.starts_with("https://") {
+                url = format!("https://{}", url);
+            }
+            wv2.load_uri(&url);
+        });
+
+        hbox.pack_start(&url_bar, true, true, 4);
+        hbox.pack_start(&go_btn, false, false, 4);
+        vbox.pack_start(&hbox, false, false, 4);
+        vbox.pack_start(&webview, true, true, 0);
         window.add(&vbox);
         window.show_all();
     });
