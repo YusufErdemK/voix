@@ -1,7 +1,7 @@
 use gtk::prelude::*;
 use gtk::{
     Application, ApplicationWindow, Box, Button, Dialog, Entry,
-    Label, Menu, MenuItem, Notebook, Orientation, Spinner,
+    EventBox, Label, Menu, MenuItem, Notebook, Orientation, Spinner,
 };
 use webkit2gtk::{LoadEvent, WebView, WebViewExt};
 
@@ -23,15 +23,17 @@ fn new_tab(notebook: &Notebook, url: &str) {
 
     let label = Label::new(Some("Yeni Sekme"));
     let tab_hbox = Box::new(Orientation::Horizontal, 4);
-    tab_hbox.set_events(gtk::gdk::EventMask::BUTTON_PRESS_MASK);
     let close_btn = Button::with_label("✕");
     close_btn.set_relief(gtk::ReliefStyle::None);
 
     tab_hbox.pack_start(&label, true, true, 0);
     tab_hbox.pack_start(&close_btn, false, false, 0);
-    tab_hbox.show_all();
 
-    let page_index = notebook.append_page(&webview, Some(&tab_hbox));
+    let event_box = EventBox::new();
+    event_box.add(&tab_hbox);
+    event_box.show_all();
+
+    let page_index = notebook.append_page(&webview, Some(&event_box));
     notebook.set_current_page(Some(page_index));
     notebook.show_all();
 
@@ -50,7 +52,7 @@ fn new_tab(notebook: &Notebook, url: &str) {
         }
     });
 
-    // Sekme kapat
+    // Kapat butonu
     let nb = notebook.clone();
     let wv = webview.clone();
     close_btn.connect_clicked(move |_| {
@@ -59,15 +61,15 @@ fn new_tab(notebook: &Notebook, url: &str) {
         }
     });
 
-    // Sağ tık menüsü — sabitle
+    // Sağ tık menüsü
     let nb = notebook.clone();
     let wv = webview.clone();
     let close_clone = close_btn.clone();
-    tab_hbox.connect_button_press_event(move |_, event| {
+    event_box.connect_button_press_event(move |_, event| {
         if event.button() == 3 {
             let menu = Menu::new();
-            let pin_item = MenuItem::with_label("📌 Sekmeyi Sabitle");
-            let unpin_item = MenuItem::with_label("📌 Sabitlemeyi Kaldır");
+            let pin_item   = MenuItem::with_label("Sekmeyi Sabitle");
+            let unpin_item = MenuItem::with_label("Sabitlemeyi Kaldır");
             menu.append(&pin_item);
             menu.append(&unpin_item);
             menu.show_all();
@@ -76,14 +78,9 @@ fn new_tab(notebook: &Notebook, url: &str) {
             let wv2 = wv.clone();
             let close2 = close_clone.clone();
             pin_item.connect_activate(move |_| {
-                if let Some(idx) = nb2.page_num(&wv2) {
-                    // Kapat butonunu gizle, tab'ı küçült
-                    close2.hide();
-                    nb2.set_tab_reorderable(&wv2, false);
-                    // Sabitlenmiş sekmeyi başa taşı
-                    nb2.reorder_child(&wv2, Some(0));
-                    nb2.set_current_page(Some(idx));
-                }
+                close2.hide();
+                nb2.set_tab_reorderable(&wv2, false);
+                nb2.reorder_child(&wv2, Some(0));
             });
 
             let nb2 = nb.clone();
@@ -117,43 +114,40 @@ fn show_settings(homepage: &std::rc::Rc<std::cell::RefCell<String>>) {
     vbox.set_margin_top(16);
     vbox.set_margin_bottom(16);
 
-    // Ana sayfa
     let hp_label = Label::new(Some("Ana Sayfa:"));
     hp_label.set_halign(gtk::Align::Start);
     let hp_entry = Entry::new();
     hp_entry.set_text(&homepage.borrow());
 
-    // Yazı boyutu
     let font_label = Label::new(Some("Yazı Boyutu:"));
     font_label.set_halign(gtk::Align::Start);
     let font_box = Box::new(Orientation::Horizontal, 8);
-    let small_btn = Button::with_label("Küçük");
+    let small_btn  = Button::with_label("Küçük");
     let medium_btn = Button::with_label("Orta");
-    let large_btn = Button::with_label("Büyük");
-    font_box.pack_start(&small_btn, false, false, 0);
+    let large_btn  = Button::with_label("Büyük");
+    font_box.pack_start(&small_btn,  false, false, 0);
     font_box.pack_start(&medium_btn, false, false, 0);
-    font_box.pack_start(&large_btn, false, false, 0);
+    font_box.pack_start(&large_btn,  false, false, 0);
 
-    // Hakkında
     let about_label = Label::new(Some("Hakkında"));
     about_label.set_halign(gtk::Align::Start);
     let about_box = Box::new(Orientation::Vertical, 4);
     let name_label = Label::new(Some("Voix Browser"));
-    let ver_label = Label::new(Some("Versiyon: 0.1.0"));
+    let ver_label  = Label::new(Some("Versiyon: 0.1.0"));
     let tech_label = Label::new(Some("Rust + GTK3 + WebKitGTK ile yapıldı"));
     name_label.set_halign(gtk::Align::Start);
     ver_label.set_halign(gtk::Align::Start);
     tech_label.set_halign(gtk::Align::Start);
     about_box.pack_start(&name_label, false, false, 0);
-    about_box.pack_start(&ver_label, false, false, 0);
+    about_box.pack_start(&ver_label,  false, false, 0);
     about_box.pack_start(&tech_label, false, false, 0);
 
-    vbox.pack_start(&hp_label, false, false, 0);
-    vbox.pack_start(&hp_entry, false, false, 0);
-    vbox.pack_start(&font_label, false, false, 0);
-    vbox.pack_start(&font_box, false, false, 0);
+    vbox.pack_start(&hp_label,    false, false, 0);
+    vbox.pack_start(&hp_entry,    false, false, 0);
+    vbox.pack_start(&font_label,  false, false, 0);
+    vbox.pack_start(&font_box,    false, false, 0);
     vbox.pack_start(&about_label, false, false, 0);
-    vbox.pack_start(&about_box, false, false, 0);
+    vbox.pack_start(&about_box,   false, false, 0);
     content.pack_start(&vbox, true, true, 0);
     content.show_all();
 
@@ -229,7 +223,6 @@ fn main() {
             new_tab(&nb, "https://www.google.com");
         });
 
-        // Ayarlar butonu
         let hp = homepage.clone();
         settings_btn.connect_clicked(move |_| {
             show_settings(&hp);
