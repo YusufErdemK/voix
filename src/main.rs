@@ -1,9 +1,12 @@
 use gtk::prelude::*;
 use gtk::{
-    Application, ApplicationWindow, Box, Button, Dialog, Entry,
-    EventBox, Label, Menu, MenuItem, Notebook, Orientation, Spinner,
+    Application, ApplicationWindow, Button, CssProvider, Entry,
+    HeaderBar, Menu, MenuItem, Notebook, Orientation, Spinner,
+    StyleContext, gdk::Screen, EventBox, Box, Label,
 };
 use webkit2gtk::{LoadEvent, WebView, WebViewExt};
+use std::rc::Rc;
+use std::cell::RefCell;
 
 fn navigate(webview: &WebView, input: &str) {
     let url = if input.starts_with("http://") || input.starts_with("https://") {
@@ -14,6 +17,11 @@ fn navigate(webview: &WebView, input: &str) {
         format!("https://www.google.com/search?q={}", input.replace(' ', "+"))
     };
     webview.load_uri(&url);
+}
+
+fn get_webview(nb: &Notebook) -> Option<WebView> {
+    let idx = nb.current_page()?;
+    nb.nth_page(Some(idx))?.downcast::<WebView>().ok()
 }
 
 fn new_tab(notebook: &Notebook, url: &str) {
@@ -52,7 +60,7 @@ fn new_tab(notebook: &Notebook, url: &str) {
         }
     });
 
-    // Kapat butonu
+    // Kapat
     let nb = notebook.clone();
     let wv = webview.clone();
     close_btn.connect_clicked(move |_| {
@@ -61,7 +69,7 @@ fn new_tab(notebook: &Notebook, url: &str) {
         }
     });
 
-    // Sağ tık menüsü
+    // Sağ tık — sabitle
     let nb = notebook.clone();
     let wv = webview.clone();
     let close_clone = close_btn.clone();
@@ -76,18 +84,18 @@ fn new_tab(notebook: &Notebook, url: &str) {
 
             let nb2 = nb.clone();
             let wv2 = wv.clone();
-            let close2 = close_clone.clone();
+            let c2  = close_clone.clone();
             pin_item.connect_activate(move |_| {
-                close2.hide();
+                c2.hide();
                 nb2.set_tab_reorderable(&wv2, false);
                 nb2.reorder_child(&wv2, Some(0));
             });
 
             let nb2 = nb.clone();
             let wv2 = wv.clone();
-            let close2 = close_clone.clone();
+            let c2  = close_clone.clone();
             unpin_item.connect_activate(move |_| {
-                close2.show();
+                c2.show();
                 nb2.set_tab_reorderable(&wv2, true);
             });
 
@@ -98,76 +106,64 @@ fn new_tab(notebook: &Notebook, url: &str) {
     });
 }
 
-fn show_settings(homepage: &std::rc::Rc<std::cell::RefCell<String>>) {
-    let dialog = Dialog::with_buttons(
-        Some("Voix Ayarları"),
-        gtk::Window::NONE,
-        gtk::DialogFlags::MODAL,
-        &[("Tamam", gtk::ResponseType::Ok), ("İptal", gtk::ResponseType::Cancel)],
-    );
-    dialog.set_default_size(400, 300);
-
-    let content = dialog.content_area();
-    let vbox = Box::new(Orientation::Vertical, 12);
-    vbox.set_margin_start(16);
-    vbox.set_margin_end(16);
-    vbox.set_margin_top(16);
-    vbox.set_margin_bottom(16);
-
-    let hp_label = Label::new(Some("Ana Sayfa:"));
-    hp_label.set_halign(gtk::Align::Start);
-    let hp_entry = Entry::new();
-    hp_entry.set_text(&homepage.borrow());
-
-    let font_label = Label::new(Some("Yazı Boyutu:"));
-    font_label.set_halign(gtk::Align::Start);
-    let font_box = Box::new(Orientation::Horizontal, 8);
-    let small_btn  = Button::with_label("Küçük");
-    let medium_btn = Button::with_label("Orta");
-    let large_btn  = Button::with_label("Büyük");
-    font_box.pack_start(&small_btn,  false, false, 0);
-    font_box.pack_start(&medium_btn, false, false, 0);
-    font_box.pack_start(&large_btn,  false, false, 0);
-
-    let about_label = Label::new(Some("Hakkında"));
-    about_label.set_halign(gtk::Align::Start);
-    let about_box = Box::new(Orientation::Vertical, 4);
-    let name_label = Label::new(Some("Voix Browser"));
-    let ver_label  = Label::new(Some("Versiyon: 0.1.0"));
-    let tech_label = Label::new(Some("Rust + GTK3 + WebKitGTK ile yapıldı"));
-    name_label.set_halign(gtk::Align::Start);
-    ver_label.set_halign(gtk::Align::Start);
-    tech_label.set_halign(gtk::Align::Start);
-    about_box.pack_start(&name_label, false, false, 0);
-    about_box.pack_start(&ver_label,  false, false, 0);
-    about_box.pack_start(&tech_label, false, false, 0);
-
-    vbox.pack_start(&hp_label,    false, false, 0);
-    vbox.pack_start(&hp_entry,    false, false, 0);
-    vbox.pack_start(&font_label,  false, false, 0);
-    vbox.pack_start(&font_box,    false, false, 0);
-    vbox.pack_start(&about_label, false, false, 0);
-    vbox.pack_start(&about_box,   false, false, 0);
-    content.pack_start(&vbox, true, true, 0);
-    content.show_all();
-
-    let hp_clone = homepage.clone();
-    if dialog.run() == gtk::ResponseType::Ok {
-        *hp_clone.borrow_mut() = hp_entry.text().to_string();
-    }
-    dialog.close();
-}
-
 fn main() {
     let app = Application::builder()
         .application_id("com.voix.browser")
         .build();
 
-    app.connect_activate(|app| {
-        let homepage = std::rc::Rc::new(std::cell::RefCell::new(
-            "https://www.google.com".to_string()
-        ));
+    app.connect_startup(|_| {
+        let provider = CssProvider::new();
+        let css = "
+            headerbar {
+                background: @theme_bg_color;
+                border-bottom: 1px solid rgba(0,0,0,0.1);
+                padding: 6px;
+            }
+            entry#url-bar {
+                border-radius: 16px;
+                background-color: #252525;
+                border: 1px solid rgba(0,0,0,0.12);
+                color: #d4d4d4;
+                padding: 5px 12px;
+                box-shadow: none;
+            }
+            entry#url-bar:focus {
+                background-color: #383838;
+                border: 1px solid rgba(0,0,0,0.2);
+            }
+            button.image-button,
+            button.image-button:hover,
+            button.image-button:active,
+            button.image-button:focus {
+                border: none;
+                border-radius: 6px;
+                background-color: transparent;
+                box-shadow: none;
+                outline: none;
+                transition: none;
+                -gtk-icon-shadow: none;
+            }
+            button.image-button:hover {
+                background-color: rgba(128,128,128,0.15);
+            }
+            notebook tab {
+                border: none;
+                padding: 8px 16px;
+            }
+            notebook tab:checked {
+                background-color: rgba(0,0,0,0.03);
+                border-bottom: 2px solid #a0a0a0;
+            }
+        ";
+        provider.load_from_data(css.as_bytes()).unwrap();
+        StyleContext::add_provider_for_screen(
+            &Screen::default().unwrap(),
+            &provider,
+            gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
+        );
+    });
 
+    app.connect_activate(|app| {
         let window = ApplicationWindow::builder()
             .application(app)
             .title("Voix")
@@ -175,33 +171,33 @@ fn main() {
             .default_height(800)
             .build();
 
-        let vbox = Box::new(Orientation::Vertical, 0);
-        let hbox = Box::new(Orientation::Horizontal, 4);
+        let header_bar = HeaderBar::new();
+        header_bar.set_show_close_button(true);
 
-        let back_btn     = Button::with_label("◀");
-        let forward_btn  = Button::with_label("▶");
-        let reload_btn   = Button::with_label("↺");
-        let new_tab_btn  = Button::with_label("+");
-        let settings_btn = Button::with_label("⚙");
-        let url_bar      = Entry::new();
-        let spinner      = Spinner::new();
+        let back_btn    = Button::from_icon_name(Some("go-previous-symbolic"), gtk::IconSize::Button);
+        let forward_btn = Button::from_icon_name(Some("go-next-symbolic"), gtk::IconSize::Button);
+        let reload_btn  = Button::from_icon_name(Some("view-refresh-symbolic"), gtk::IconSize::Button);
+        let new_tab_btn = Button::from_icon_name(Some("tab-new-symbolic"), gtk::IconSize::Button);
+        let url_bar     = Entry::new();
+        let spinner     = Spinner::new();
 
-        url_bar.set_placeholder_text(Some("Ara veya adres yaz..."));
+        url_bar.set_widget_name("url-bar");
+        url_bar.set_placeholder_text(Some("Adres..."));
+        url_bar.set_alignment(0.5);
         url_bar.set_hexpand(true);
-        back_btn.set_sensitive(false);
-        forward_btn.set_sensitive(false);
+
+        header_bar.pack_start(&back_btn);
+        header_bar.pack_start(&forward_btn);
+        header_bar.pack_start(&reload_btn);
+        header_bar.set_custom_title(Some(&url_bar));
+        header_bar.pack_end(&new_tab_btn);
+        header_bar.pack_end(&spinner);
+        window.set_titlebar(Some(&header_bar));
 
         let notebook = Notebook::new();
         notebook.set_vexpand(true);
         notebook.set_scrollable(true);
-
-        new_tab(&notebook, &homepage.borrow());
-
-        let get_webview = |nb: &Notebook| -> Option<WebView> {
-            let idx = nb.current_page()?;
-            let widget = nb.nth_page(Some(idx))?;
-            widget.downcast::<WebView>().ok()
-        };
+        new_tab(&notebook, "https://www.google.com");
 
         let nb = notebook.clone();
         back_btn.connect_clicked(move |_| {
@@ -223,25 +219,18 @@ fn main() {
             new_tab(&nb, "https://www.google.com");
         });
 
-        let hp = homepage.clone();
-        settings_btn.connect_clicked(move |_| {
-            show_settings(&hp);
-        });
-
-        let nb   = notebook.clone();
-        let sp   = spinner.clone();
-        let back = back_btn.clone();
-        let fwd  = forward_btn.clone();
-        let ub   = url_bar.clone();
-
+        let nb = notebook.clone();
+        let ub = url_bar.clone();
+        let sp = spinner.clone();
+        let bc = back_btn.clone();
+        let fc = forward_btn.clone();
         url_bar.connect_activate(move |entry| {
             if let Some(wv) = get_webview(&nb) {
                 navigate(&wv, &entry.text());
-
-                let ub2   = ub.clone();
-                let sp2   = sp.clone();
-                let back2 = back.clone();
-                let fwd2  = fwd.clone();
+                let ub2 = ub.clone();
+                let sp2 = sp.clone();
+                let bc2 = bc.clone();
+                let fc2 = fc.clone();
                 wv.connect_load_changed(move |wv, event| {
                     match event {
                         LoadEvent::Started   => { sp2.start(); }
@@ -250,8 +239,8 @@ fn main() {
                         }
                         LoadEvent::Finished  => {
                             sp2.stop();
-                            back2.set_sensitive(wv.can_go_back());
-                            fwd2.set_sensitive(wv.can_go_forward());
+                            bc2.set_sensitive(wv.can_go_back());
+                            fc2.set_sensitive(wv.can_go_forward());
                         }
                         _ => {}
                     }
@@ -259,6 +248,7 @@ fn main() {
             }
         });
 
+        // Ctrl+L, Ctrl+T, Ctrl+W
         let ub = url_bar.clone();
         let nb = notebook.clone();
         window.connect_key_press_event(move |_, key| {
@@ -280,16 +270,7 @@ fn main() {
             false.into()
         });
 
-        hbox.pack_start(&back_btn,     false, false, 2);
-        hbox.pack_start(&forward_btn,  false, false, 2);
-        hbox.pack_start(&reload_btn,   false, false, 2);
-        hbox.pack_start(&url_bar,      true,  true,  4);
-        hbox.pack_start(&spinner,      false, false, 4);
-        hbox.pack_start(&new_tab_btn,  false, false, 2);
-        hbox.pack_start(&settings_btn, false, false, 2);
-        vbox.pack_start(&hbox,     false, false, 4);
-        vbox.pack_start(&notebook, true,  true,  0);
-        window.add(&vbox);
+        window.add(&notebook);
         window.show_all();
     });
 
